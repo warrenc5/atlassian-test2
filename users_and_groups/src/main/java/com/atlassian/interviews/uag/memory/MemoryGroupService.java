@@ -43,6 +43,7 @@ public class MemoryGroupService extends AbstractService implements GroupService 
     public void delete(Group group) {
         requireNonNull(group, "group");
         groups.remove(group.getName());
+        this.services.getMembershipService().getUsersInGroup(group).clear();
         LOG.debug("Deleted group: {}", group.getName());
     }
 }

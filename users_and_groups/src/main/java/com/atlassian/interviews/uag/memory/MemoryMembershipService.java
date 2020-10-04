@@ -10,111 +10,128 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * An implementation of the membership service that stores user and group relationships in memory.
+ * An implementation of the membership service that stores user and group
+ * relationships in memory.
  */
 @ParametersAreNonnullByDefault
 public class MemoryMembershipService extends AbstractService implements MembershipService {
-    private static final Logger LOG = LoggerFactory.getLogger(MemoryMembershipService.class);
 
-    private final Map<Group, Set<Group>> childGroupsByParent = new HashMap<>();
-    private final Map<Group, Set<User>> usersByGroup = new HashMap<>();
+	private static final Logger LOG = LoggerFactory.getLogger(MemoryMembershipService.class);
 
-    public MemoryMembershipService(Services services) {
-        super(services);
-    }
+	private final Map<Group, Set<Group>> childGroupsByParent = new HashMap<>();
+	private final Map<Group, Set<User>> usersByGroup = new HashMap<>();
 
-    @Override
-    public void addGroupToGroup(Group child, Group parent) {
-        requireExists(parent);
-        requireExists(child);
+	public MemoryMembershipService(Services services) {
+		super(services);
+	}
 
-        Set<Group> children = childGroupsByParent.get(parent);
-        if (children == null) {
-            children = new HashSet<>();
-            childGroupsByParent.put(parent, children);
-        }
-        children.add(child);
+	@Override
+	public void addGroupToGroup(Group child, Group parent) {
+		requireExists(parent);
+		requireExists(child);
 
-        LOG.debug("Added child group " + child + " to parent group " + parent);
-    }
+		Set<Group> children = childGroupsByParent.get(parent);
+		if (children == null) {
+			children = new HashSet<>();
+			childGroupsByParent.put(parent, children);
+		}
+		children.add(child);
 
-    public void addUserToGroup(User user, Group group) {
-        requireExists(user);
-        requireExists(group);
+		LOG.debug("Added child group " + child + " to parent group " + parent);
+	}
 
-        Set<User> users = usersByGroup.get(group);
-        if (users == null) {
-            users = new HashSet<>();
-            usersByGroup.put(group, users);
-        }
-        users.add(user);
+	public void addUserToGroup(User user, Group group) {
+		requireExists(user);
+		requireExists(group);
 
-        LOG.debug("Added user " + user + " to group " + group);
-    }
+		Set<User> users = usersByGroup.get(group);
+		if (users == null) {
+			users = new HashSet<>();
+			usersByGroup.put(group, users);
+		}
+		users.add(user);
 
-    public boolean isUserInGroup(User user, Group group) {
-        requireNonNull(user, "user");
-        requireNonNull(group, "group");
+		LOG.debug("Added user " + user + " to group " + group);
+	}
 
-        // TODO... Only knows direct memberships right now
-        return getUsersInGroup(group).contains(user);
-    }
+	AtomicLong depth = new AtomicLong();
 
-    public boolean isGroupInGroup(Group child, Group parent) {
-        requireNonNull(child, "child");
-        requireNonNull(parent, "parent");
+	public boolean isUserInGroup(User user, Set<Group> groups) {
+		depth.incrementAndGet();
+		return groups!=null && groups.stream().anyMatch(g -> {
+			return g != null
+				&& user != null 
+                && this.isUserInGroup(user, g);
+		});
+        
+	}
 
-        // TODO... Only doing one level for now
-        Collection<Group> children = childGroupsByParent.get(parent);
-        return children != null && children.contains(child);
-    }
+	public boolean isUserInGroup(User user, Group group) {
+		requireNonNull(user, "user");
+		requireNonNull(group, "group");
 
-    public Collection<User> getUsersInGroup(Group group) {
-        requireNonNull(group, "group");
+		// TODO... Only knows direct memberships right now
+		return getUsersInGroup(group).contains(user) || isUserInGroup(user, this.childGroupsByParent.get(user));
 
-        final Collection<User> users = usersByGroup.get(group);
-        LOG.debug("Current users in group {}: {}", group.toString(), users.toString());
-        return users;
-    }
+	}
 
-    @Override
-    public void removeGroupFromGroup(Group child, Group parent) {
-        requireNonNull(parent, "parent");
-        requireNonNull(child, "child");
+	public boolean isGroupInGroup(Group child, Group parent) {
+		requireNonNull(child, "child");
+		requireNonNull(parent, "parent");
 
-        Set<Group> children = childGroupsByParent.get(parent);
-        if (children != null) {
-            children.remove(child);
-        }
-    }
+		// TODO... Only doing one level for now
+		Collection<Group> children = childGroupsByParent.get(parent);
+		return children != null && children.contains(child);
+	}
 
-    public void removeUserFromGroup(User user, Group group) {
-        requireNonNull(user, "user");
-        requireNonNull(group, "group");
+	public Collection<User> getUsersInGroup(Group group) {
+		requireNonNull(group, "group");
 
-        getUsersInGroup(group).remove(user);
-        LOG.debug(String.format("Removed user %s from group %s", user, group));
-    }
+		final Collection<User> users = usersByGroup.getOrDefault(group, Collections.EMPTY_SET);
+		LOG.debug("Current users in group {}: {}", group.toString(), users.toString());
+		return users;
+	}
 
-    private void requireExists(User user) {
-        requireNonNull(user, "user");
-        if (services.getUserService().findByName(user.getName()) == null) {
-            throw new IllegalArgumentException("User '" + user + "' does not exist!");
-        }
-    }
+	@Override
+	public void removeGroupFromGroup(Group child, Group parent) {
+		requireNonNull(parent, "parent");
+		requireNonNull(child, "child");
 
-    private void requireExists(Group group) {
-        requireNonNull(group, "group");
-        if (services.getGroupService().findByName(group.getName()) == null) {
-            throw new IllegalArgumentException("Group '" + group + "' does not exist!");
-        }
-    }
+		Set<Group> children = childGroupsByParent.get(parent);
+		if (children != null) {
+			children.remove(child);
+		}
+	}
+
+	public void removeUserFromGroup(User user, Group group) {
+		requireNonNull(user, "user");
+		requireNonNull(group, "group");
+
+		getUsersInGroup(group).remove(user);
+		LOG.debug(String.format("Removed user %s from group %s", user, group));
+	}
+
+	private void requireExists(User user) {
+		requireNonNull(user, "user");
+		if (services.getUserService().findByName(user.getName()) == null) {
+			throw new IllegalArgumentException("User '" + user + "' does not exist!");
+		}
+	}
+
+	private void requireExists(Group group) {
+		requireNonNull(group, "group");
+		if (services.getGroupService().findByName(group.getName()) == null) {
+			throw new IllegalArgumentException("Group '" + group + "' does not exist!");
+		}
+	}
 }

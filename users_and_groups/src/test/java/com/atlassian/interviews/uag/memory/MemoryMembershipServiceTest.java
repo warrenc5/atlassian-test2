@@ -17,7 +17,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -35,18 +34,39 @@ public class MemoryMembershipServiceTest {
 
     private MembershipService membershipService;
 
+    private Services services;
     @Before
     public void setUp() {
-        final Services services = ServiceFactory.createServices();
+        services = ServiceFactory.createServices();
         services.getUserService().create(OMAR);
         services.getUserService().create(RITA);
         services.getGroupService().create(ADMINS);
         services.getGroupService().create(HACKERS);
         membershipService = services.getMembershipService();
     }
-
+    
     @Test
     public void addUserToGroup_duplicate() {
+        User alex = new User("alex");
+        User alex2 = new User("alex");
+        services.getUserService().create(alex);
+//        services.getUserService().create(alex2);
+        
+        membershipService.addUserToGroup(alex, HACKERS);
+        
+        final Set<User> expected = new HashSet<>();
+        expected.add(alex);
+  
+        assertEquals(sorted(expected), sorted(membershipService.getUsersInGroup(HACKERS)));
+
+        final Set<User> notexpected = new HashSet<>();
+        notexpected.add(alex2);
+
+        assertEquals(sorted(notexpected), sorted(membershipService.getUsersInGroup(HACKERS)));
+    }
+
+    @Test
+    public void addUserToGroup_duplicate2() {
         membershipService.addUserToGroup(OMAR, HACKERS);
         membershipService.addUserToGroup(RITA, HACKERS);
 
@@ -91,6 +111,13 @@ public class MemoryMembershipServiceTest {
 
         membershipService.removeUserFromGroup(OMAR, ADMINS);
         assertFalse("omar is not an admin anymore", membershipService.isUserInGroup(OMAR, ADMINS));
+    }
+    
+    
+    @Test
+    public void testRemoveUserFromEmptyGroup() {
+        membershipService.removeUserFromGroup(OMAR, ADMINS);
+        assertFalse("omar is not an admin anymore", membershipService.isUserInGroup(OMAR, ADMINS));        
     }
 
     @Test
